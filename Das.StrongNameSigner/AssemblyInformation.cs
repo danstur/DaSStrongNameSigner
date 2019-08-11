@@ -13,26 +13,27 @@ using Mono.Cecil;
 namespace DaS.StrongNameSigner
 {
     [DebuggerDisplay("{AssemblyName}")]
-    internal sealed class AssemblyInformation : IDisposable
+    internal sealed class AssemblyInformation
     {
         private ITaskItem InitialTaskItem { get; }
 
         public ReferenceType ReferenceType { get; set; }
 
-        private AssemblyDefinition AssemblyDefinition { get; }
+        private AssemblyDefinition _assemblyDefinition;
+        private readonly ReaderParameters _readerParameters;
 
         private string AssemblyFilePath => InitialTaskItem.ItemSpec;
 
         /// <summary>
         /// Returns true if the assembly is strong name signed or delay signed.
         /// </summary>
-        public bool IsSigned => AssemblyDefinition.Name.HasPublicKey;
+        public bool IsSigned => _assemblyDefinition.Name.HasPublicKey;
 
-        public string AssemblyName => AssemblyDefinition.Name.FullName;
+        public string AssemblyName => _assemblyDefinition.Name.FullName;
 
         public IEnumerable<string> InitialUnsignedReferences => UnsignedAssemblyNameReferences.Select(x => x.FullName);
 
-        private IEnumerable<AssemblyNameReference> UnsignedAssemblyNameReferences => AssemblyDefinition.MainModule
+        private IEnumerable<AssemblyNameReference> UnsignedAssemblyNameReferences => _assemblyDefinition.MainModule
             .AssemblyReferences
             .Where(ass => ass.PublicKeyToken.Length == 0);
 
@@ -58,10 +59,13 @@ namespace DaS.StrongNameSigner
         /// </summary>
         public ITaskItem SignedTaskItem { get; private set; }
 
-        public AssemblyInformation(ITaskItem initialTaskItem, AssemblyDefinition assemblyDefinition)
+        public AssemblyInformation(ITaskItem initialTaskItem, AssemblyDefinition assemblyDefinition, ReaderParameters readerParameters)
         {
+            // The AssemblyDefinition is disposed and was initialized with deferred reading. 
+            // We have to be careful what we do with it.
             InitialTaskItem = initialTaskItem;
-            AssemblyDefinition = assemblyDefinition;
+            _assemblyDefinition = assemblyDefinition;
+            _readerParameters = readerParameters;
             ReferencingAssemblies = new ReadOnlyCollection<string>(_referencingAssemblies);
             ReferencedUnsignedAssemblies = InitialUnsignedReferences.Count();
             if (IsSigned)
@@ -77,30 +81,30 @@ namespace DaS.StrongNameSigner
 
         public bool HasUnsignedReferences() => ReferencedUnsignedAssemblies != 0;
 
-        public void Dispose()
-        {
-            AssemblyDefinition?.Dispose();
-        }
-
         public void Sign(string baseOutputDir, PublicKeyData publicKeyData)
         {
             if (HasUnsignedReferences())
             {
                 throw new InvalidOperationException("Cannot sign assembly with outstanding unsigned references.");
             }
-            var outputFile = GetOutputFile(baseOutputDir);
-            SignedTaskItem = new TaskItem(InitialTaskItem)
+            // Replace the assemblydefinition with an open one for the duration of the write calls.
+            using (_assemblyDefinition =
+                Mono.Cecil.AssemblyDefinition.ReadAssembly(InitialTaskItem.ItemSpec, _readerParameters))
             {
-                ItemSpec = outputFile
-            };
-            SetPublicKeyTokenOnReferences(publicKeyData.PublicKeyToken);
-            FixInternalsVisibleTo();
-            AssemblyDefinition.Write(outputFile, GetWriterParameters(publicKeyData.StrongNameKeyPair));
+                var outputFile = GetOutputFile(baseOutputDir);
+                SignedTaskItem = new TaskItem(InitialTaskItem)
+                {
+                    ItemSpec = outputFile
+                };
+                SetPublicKeyTokenOnReferences(publicKeyData.PublicKeyToken);
+                FixInternalsVisibleTo();
+                _assemblyDefinition.Write(outputFile, GetWriterParameters(publicKeyData.StrongNameKeyPair));
+            }
         }
 
         private void FixInternalsVisibleTo()
         {
-            var internalsVisibleToAttributes = AssemblyDefinition.CustomAttributes.Where(attr =>
+            var internalsVisibleToAttributes = _assemblyDefinition.CustomAttributes.Where(attr =>
                 attr.AttributeType.FullName == typeof(InternalsVisibleToAttribute).FullName).ToList();
             foreach (var att in internalsVisibleToAttributes)
             {

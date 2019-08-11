@@ -108,7 +108,6 @@ namespace DaS.StrongNameSigner
             SignedReferenceCopyLocalPaths = _assemblyNameToInformationMap.Values
                 .Where(x => x.ReferenceType.HasFlag(ReferenceType.CopyLocal)).Select(x => x.SignedTaskItem)
                 .Concat(ReferenceCopyLocalPaths.Where(reference => !IsValidDotNetReference(reference)))
-                
                 .ToArray();
         }
 
@@ -157,8 +156,10 @@ namespace DaS.StrongNameSigner
         private AssemblyInformation GetAssemblyInfo(ITaskItem referenceItem)
         {
             var assemblyPath = referenceItem.ItemSpec;
-            var assemblyDefinition = AssemblyDefinition.ReadAssembly(assemblyPath, _readerParameters);
-            return new AssemblyInformation(referenceItem, assemblyDefinition);
+            using (var assemblyDefinition = AssemblyDefinition.ReadAssembly(assemblyPath, _readerParameters))
+            {
+                return new AssemblyInformation(referenceItem, assemblyDefinition, _readerParameters);
+            }
         }
 
         private ReaderParameters GetReaderParameters()
