@@ -18,6 +18,6 @@
   <files>
     <file src="DaSStrongNameSigner.targets" target="build\" />
 	<file src="signingkey.snk" target="build\" />
-	<file src="bin\debug\net461\*.dll" target="build\" />
+	<file src="bin\release\net461\*.dll" target="build\" />
   </files>
 </package>
