@@ -23,7 +23,10 @@ namespace DaS.StrongNameSigner
 
         private string AssemblyFilePath => InitialTaskItem.ItemSpec;
 
-        public bool IsSigned => AssemblyDefinition.MainModule.Attributes.HasFlag(ModuleAttributes.StrongNameSigned);
+        /// <summary>
+        /// Returns true if the assembly is strong name signed or delay signed.
+        /// </summary>
+        public bool IsSigned => AssemblyDefinition.Name.HasPublicKey;
 
         public string AssemblyName => AssemblyDefinition.Name.FullName;
 

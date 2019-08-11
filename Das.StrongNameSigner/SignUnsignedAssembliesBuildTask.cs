@@ -43,7 +43,21 @@ namespace DaS.StrongNameSigner
 
         public override bool Execute()
         {
-            Log.LogMessage(MessageImportance.Normal, "---- .NET Assembly Strong-Name Signer ----");
+            try
+            {
+                Log.LogMessage(MessageImportance.Normal, "---- .NET Assembly Strong-Name Signer ----");
+                SignAllAssemblies();
+                return true;
+            }
+            catch (Exception e)
+            {
+                Log.LogErrorFromException(e, true, true, null);
+                return false;
+            }
+        }
+
+        private void SignAllAssemblies()
+        {
             _signedAssemblyDirectory = Path.Combine(OutputPath.ItemSpec, "DaS.StrongNameSigner");
             if (!Directory.Exists(_signedAssemblyDirectory))
             {
@@ -59,7 +73,9 @@ namespace DaS.StrongNameSigner
             _assemblyNameToInformationMap = References.Select(reference =>
                     (referenceType: ReferenceType.Normal, assemblyInfo: GetAssemblyInfo(reference)))
                 .Union(
-                    ReferenceCopyLocalPaths.Select(reference =>
+                    ReferenceCopyLocalPaths
+                        .Where(IsValidDotNetReference)
+                        .Select(reference =>
                         (referenceType: ReferenceType.CopyLocal, assemblyInfo: GetAssemblyInfo(reference)))
                 )
                 .GroupBy(x => x.assemblyInfo.AssemblyName)
@@ -90,8 +106,16 @@ namespace DaS.StrongNameSigner
             SignedReferences = _assemblyNameToInformationMap.Values
                 .Where(x => x.ReferenceType.HasFlag(ReferenceType.Normal)).Select(x => x.SignedTaskItem).ToArray();
             SignedReferenceCopyLocalPaths = _assemblyNameToInformationMap.Values
-                .Where(x => x.ReferenceType.HasFlag(ReferenceType.CopyLocal)).Select(x => x.SignedTaskItem).ToArray();
-            return true;
+                .Where(x => x.ReferenceType.HasFlag(ReferenceType.CopyLocal)).Select(x => x.SignedTaskItem)
+                .Concat(ReferenceCopyLocalPaths.Where(reference => !IsValidDotNetReference(reference)))
+                
+                .ToArray();
+        }
+
+        private bool IsValidDotNetReference(ITaskItem item)
+        {
+            return item.ItemSpec.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) ||
+                item.ItemSpec.EndsWith(".exe", StringComparison.OrdinalIgnoreCase);
         }
 
         private PublicKeyData GetPublicKeyData()
