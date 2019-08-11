@@ -1,0 +1,18 @@
+﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <UsingTask TaskName="DaS.StrongNameSigner.SignUnsignedAssembliesBuildTask" AssemblyFile="$(MSBuildThisFileDirectory)DaS.StrongNameSigner.dll" />
+
+  <Target Name="StrongNameSignerTarget" AfterTargets="AfterResolveReferences">
+    <DaS.StrongNameSigner.SignUnsignedAssembliesBuildTask References="@(ReferencePath)" ReferenceCopyLocalPaths="@(ReferenceCopyLocalPaths)" OutputPath="$(IntermediateOutputPath)">
+      <Output TaskParameter="SignedReferences" ItemName="NewReferences" />
+      <Output TaskParameter="SignedReferenceCopyLocalPaths" ItemName="NewCopyLocalFiles" />
+    </DaS.StrongNameSigner.SignUnsignedAssembliesBuildTask>
+
+    <ItemGroup>
+      <ReferencePath Remove="@(ReferencePath)" />
+      <ReferencePath Include="@(NewReferences)" />
+      <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)" />
+      <ReferenceCopyLocalPaths Include="@(NewCopyLocalFiles)" />
+    </ItemGroup>
+  </Target>
+
+</Project>

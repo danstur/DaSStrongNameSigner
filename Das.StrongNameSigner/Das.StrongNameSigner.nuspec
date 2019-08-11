@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2011/08/nuspec.xsd">
+  <metadata>
+    <id>DaS.StrongNameSigner</id>
+    <version>1.0.0</version>
+    <title>.NET Assembly Strong-Name Signer</title>
+    <authors>Daniel Sturm</authors>
+    <owners>Daniel Sturm</owners>
+    <licenseUrl>https://github.com/danstur/DaSStrongNameSigner#license</licenseUrl>
+    <projectUrl>https://github.com/danstur/DaSStrongNameSigner</projectUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>
+      Automatic strong-name signing of referenced assemblies for package references.
+    </description>
+    <copyright>Daniel Sturm</copyright>
+    <tags>strongname assembly gac unsigned strong name automatic</tags>
+  </metadata>
+  <files>
+    <file src="DaSStrongNameSigner.targets" target="build\" />
+	<file src="signingkey.snk" target="build\" />
+	<file src="bin\debug\net461\*.dll" target="build\" />
+  </files>
+</package>
