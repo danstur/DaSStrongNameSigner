@@ -113,8 +113,13 @@ namespace DaS.StrongNameSigner
 
         private bool IsValidDotNetReference(ITaskItem item)
         {
-            return item.ItemSpec.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) ||
-                item.ItemSpec.EndsWith(".exe", StringComparison.OrdinalIgnoreCase);
+            // Ignore pdbs. Also if the file does not exist, it probably is part of the build
+            // and being created at which point we are not responsible for signing it anyhow.
+            // TODO This could be problematic with native assemblies that are referenced. 
+            var path = item.ItemSpec;
+            var isAssembly = path.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) ||
+                path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase);
+            return isAssembly && File.Exists(path);
         }
 
         private PublicKeyData GetPublicKeyData()
