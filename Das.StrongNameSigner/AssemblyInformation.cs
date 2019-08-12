@@ -92,6 +92,7 @@ namespace DaS.StrongNameSigner
                 Mono.Cecil.AssemblyDefinition.ReadAssembly(InitialTaskItem.ItemSpec, _readerParameters))
             {
                 var outputFile = GetOutputFile(baseOutputDir);
+                File.Delete(outputFile);
                 SignedTaskItem = new TaskItem(InitialTaskItem)
                 {
                     ItemSpec = outputFile
