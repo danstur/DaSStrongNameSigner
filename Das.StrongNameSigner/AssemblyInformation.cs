@@ -17,9 +17,8 @@ namespace DaS.StrongNameSigner
     {
         private ITaskItem InitialTaskItem { get; }
 
-        public ReferenceType ReferenceType { get; set; }
-
         private AssemblyDefinition _assemblyDefinition;
+
         private readonly ReaderParameters _readerParameters;
 
         private string AssemblyFilePath => InitialTaskItem.ItemSpec;
@@ -31,33 +30,9 @@ namespace DaS.StrongNameSigner
 
         public string AssemblyName => _assemblyDefinition.Name.FullName;
 
-        public IEnumerable<string> InitialUnsignedReferences => UnsignedAssemblyNameReferences.Select(x => x.FullName);
-
         private IEnumerable<AssemblyNameReference> UnsignedAssemblyNameReferences => _assemblyDefinition.MainModule
             .AssemblyReferences
             .Where(ass => ass.PublicKeyToken.Length == 0);
-
-        /// <summary>
-        /// Count of referenced assemblies that are not yet signed.
-        /// </summary>
-        public int ReferencedUnsignedAssemblies { get; set; }
-
-        private readonly IList<string> _referencingAssemblies = new List<string>();
-
-        /// <summary>
-        /// List of assemblies referencing this assembly. 
-        /// </summary>
-        /// <remarks>
-        /// If we have A => B then B.ReferencingAssemblies contains A.
-        /// ReferencedUnsignedAssemblies for A is 1 at the start, until B gets signed.
-        /// B always has ReferencedUnsignedAssemblies = 0.
-        /// </remarks>
-        public IReadOnlyCollection<string> ReferencingAssemblies { get; }
-
-        /// <summary>
-        /// TaskItem of signed assembly. Can be the same as the initial one, if it was already signed.
-        /// </summary>
-        public ITaskItem SignedTaskItem { get; private set; }
 
         public AssemblyInformation(ITaskItem initialTaskItem, AssemblyDefinition assemblyDefinition, ReaderParameters readerParameters)
         {
@@ -66,26 +41,13 @@ namespace DaS.StrongNameSigner
             InitialTaskItem = initialTaskItem;
             _assemblyDefinition = assemblyDefinition;
             _readerParameters = readerParameters;
-            ReferencingAssemblies = new ReadOnlyCollection<string>(_referencingAssemblies);
-            ReferencedUnsignedAssemblies = InitialUnsignedReferences.Count();
+        }
+
+        public ITaskItem Sign(string baseOutputDir, PublicKeyData publicKeyData)
+        {
             if (IsSigned)
             {
-                SignedTaskItem = InitialTaskItem;
-            }
-        }
-
-        public void AddReferencingAssembly(string assemblyName)
-        {
-            _referencingAssemblies.Add(assemblyName);
-        }
-
-        public bool HasUnsignedReferences() => ReferencedUnsignedAssemblies != 0;
-
-        public void Sign(string baseOutputDir, PublicKeyData publicKeyData)
-        {
-            if (HasUnsignedReferences())
-            {
-                throw new InvalidOperationException("Cannot sign assembly with outstanding unsigned references.");
+                return InitialTaskItem;
             }
             // Replace the assemblydefinition with an open one for the duration of the write calls.
             using (_assemblyDefinition =
@@ -93,13 +55,14 @@ namespace DaS.StrongNameSigner
             {
                 var outputFile = GetOutputFile(baseOutputDir);
                 File.Delete(outputFile);
-                SignedTaskItem = new TaskItem(InitialTaskItem)
+                var taskItem = new TaskItem(InitialTaskItem)
                 {
                     ItemSpec = outputFile
                 };
                 SetPublicKeyTokenOnReferences(publicKeyData.PublicKeyToken);
                 FixInternalsVisibleTo();
                 _assemblyDefinition.Write(outputFile, GetWriterParameters(publicKeyData.StrongNameKeyPair));
+                return taskItem;
             }
         }
 
