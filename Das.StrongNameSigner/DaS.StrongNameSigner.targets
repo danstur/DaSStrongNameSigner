@@ -6,6 +6,7 @@
     <DaS.StrongNameSigner.SignUnsignedAssembliesBuildTask References="@(ReferencePath)" ReferenceCopyLocalPaths="@(ReferenceCopyLocalPaths)" OutputPath="$(IntermediateOutputPath)">
       <Output TaskParameter="SignedReferences" ItemName="NewReferences" />
       <Output TaskParameter="SignedReferenceCopyLocalPaths" ItemName="NewCopyLocalFiles" />
+      <Output TaskParameter="TemporaryFilesToClean" ItemName="TemporaryFilesToClean" />
     </DaS.StrongNameSigner.SignUnsignedAssembliesBuildTask>
 
     <ItemGroup>
@@ -13,6 +14,7 @@
       <ReferencePath Include="@(NewReferences)" />
       <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)" />
       <ReferenceCopyLocalPaths Include="@(NewCopyLocalFiles)" />
+      <FileWrites Include="@(TemporaryFilesToClean)"/>
     </ItemGroup>
   </Target>
 

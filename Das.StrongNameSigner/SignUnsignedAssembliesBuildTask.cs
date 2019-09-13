@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.IO;
 using System.Linq;
@@ -25,6 +26,11 @@ namespace DaS.StrongNameSigner
         [Output]
         public ITaskItem[] SignedReferenceCopyLocalPaths { get; set; }
 
+        [Output]
+        public ITaskItem[] TemporaryFilesToClean { get; set; }
+
+        private readonly IList<ITaskItem> _temporaryFilesToClean = new List<ITaskItem>();
+
         private IImmutableList<string> _probingPaths;
 
         private ReaderParameters _readerParameters;
@@ -39,6 +45,7 @@ namespace DaS.StrongNameSigner
             {
                 Log.LogMessage(MessageImportance.Normal, "---- .NET Assembly Strong-Name Signer ----");
                 SignAllAssemblies();
+                TemporaryFilesToClean = _temporaryFilesToClean.ToArray();
                 return true;
             }
             catch (Exception e)
@@ -51,11 +58,10 @@ namespace DaS.StrongNameSigner
         private void SignAllAssemblies()
         {
             _signedAssemblyDirectory = Path.Combine(OutputPath.ItemSpec, "DaS.StrongNameSigner");
-            if (Directory.Exists(_signedAssemblyDirectory))
+            if (!Directory.Exists(_signedAssemblyDirectory))
             {
-                Directory.Delete(_signedAssemblyDirectory, true);
+                Directory.CreateDirectory(_signedAssemblyDirectory);
             }
-            Directory.CreateDirectory(_signedAssemblyDirectory);
             _publicKeyData = GetPublicKeyData();
             _probingPaths = References.Union(ReferenceCopyLocalPaths)
                 .Select(reference => Path.GetDirectoryName(reference.ItemSpec))
@@ -74,7 +80,15 @@ namespace DaS.StrongNameSigner
                 return reference;
             }
             var assemblyInfo = GetAssemblyInfo(reference);
-            return assemblyInfo.Sign(_signedAssemblyDirectory, _publicKeyData);
+            var hadToSign = assemblyInfo.TrySign(_signedAssemblyDirectory, _publicKeyData, out var signedTaskItem);
+            if (hadToSign)
+            {
+                // Files added to this list are added to the FileWrites msbuild property.
+                // Everything included in this property is added to the FileListAbsolute.txt
+                // file which is used to decide what files to delete when MSBuild clean is called.
+                _temporaryFilesToClean.Add(signedTaskItem);
+            }
+            return signedTaskItem;
         }
 
         private bool IsValidDotNetReference(ITaskItem item)
@@ -95,12 +109,6 @@ namespace DaS.StrongNameSigner
             var keyFilePath = Path.Combine(assemblyDir, "signingkey.snk");
             var publicKey = File.ReadAllBytes(keyFilePath);
             return new PublicKeyData(publicKey);
-        }
-
-        private void SignAssembly(AssemblyInformation assembly)
-        {
-            Log.LogMessage(MessageImportance.Normal, $"Sign assembly {assembly.AssemblyName}");
-            assembly.Sign(_signedAssemblyDirectory, _publicKeyData);
         }
 
         private AssemblyInformation GetAssemblyInfo(ITaskItem referenceItem)

@@ -1,4 +1,5 @@
-﻿using System.Reflection;
+﻿using System;
+using System.Reflection;
 using System.Security.Cryptography;
 
 namespace DaS.StrongNameSigner
@@ -9,9 +10,13 @@ namespace DaS.StrongNameSigner
 
         public byte[] PublicKeyToken { get; }
 
+        public string PublicKeyTokenAsString { get; }
+
         public PublicKeyData(byte[] publicKeyPair)
         {
             StrongNameKeyPair = new StrongNameKeyPair(publicKeyPair);
+            PublicKeyTokenAsString = BitConverter.ToString(StrongNameKeyPair.PublicKey)
+                .Replace("-", string.Empty);
             PublicKeyToken = GetPublicKeyToken(StrongNameKeyPair.PublicKey);
         }
 

@@ -43,11 +43,12 @@ namespace DaS.StrongNameSigner
             _readerParameters = readerParameters;
         }
 
-        public ITaskItem Sign(string baseOutputDir, PublicKeyData publicKeyData)
+        public bool TrySign(string baseOutputDir, PublicKeyData publicKeyData, out ITaskItem signedTaskItem)
         {
             if (IsSigned)
             {
-                return InitialTaskItem;
+                signedTaskItem = InitialTaskItem;
+                return false;
             }
             // Replace the assemblydefinition with an open one for the duration of the write calls.
             using (_assemblyDefinition =
@@ -60,20 +61,31 @@ namespace DaS.StrongNameSigner
                     ItemSpec = outputFile
                 };
                 SetPublicKeyTokenOnReferences(publicKeyData.PublicKeyToken);
-                FixInternalsVisibleTo();
+                FixInternalsVisibleTo(publicKeyData);
                 _assemblyDefinition.Write(outputFile, GetWriterParameters(publicKeyData.StrongNameKeyPair));
-                return taskItem;
+                signedTaskItem = taskItem;
+                return true;
             }
         }
 
-        private void FixInternalsVisibleTo()
+        private void FixInternalsVisibleTo(PublicKeyData publicKeyData)
         {
             var internalsVisibleToAttributes = _assemblyDefinition.CustomAttributes.Where(attr =>
                 attr.AttributeType.FullName == typeof(InternalsVisibleToAttribute).FullName).ToList();
             foreach (var att in internalsVisibleToAttributes)
             {
-                // TODO Rewrite if referencing without public key token
-                //AssemblyDefinition.CustomAttributes.Remove(att);
+                if (att.ConstructorArguments.Count != 1)
+                {
+                    throw new InvalidOperationException("InternalsVisibleToAttribute does not have a single constructor argument.");
+                }
+                var assemblyNameArgument = att.ConstructorArguments.First();
+                var assemblyName = (string) assemblyNameArgument.Value;
+                if (!assemblyName.Contains("PublicKey"))
+                {
+                    assemblyName = $"{assemblyName},PublicKey={publicKeyData.PublicKeyTokenAsString}";
+                    att.ConstructorArguments.Clear();
+                    att.ConstructorArguments.Add(new CustomAttributeArgument(assemblyNameArgument.Type, assemblyName));
+                }
             }
         }
 
