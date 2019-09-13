@@ -35,8 +35,6 @@ namespace DaS.StrongNameSigner
 
         private ReaderParameters _readerParameters;
 
-        private string _signedAssemblyDirectory;
-
         private PublicKeyData _publicKeyData;
 
         public override bool Execute()
@@ -57,30 +55,43 @@ namespace DaS.StrongNameSigner
 
         private void SignAllAssemblies()
         {
-            _signedAssemblyDirectory = Path.Combine(OutputPath.ItemSpec, "DaS.StrongNameSigner");
-            if (!Directory.Exists(_signedAssemblyDirectory))
-            {
-                Directory.CreateDirectory(_signedAssemblyDirectory);
-            }
+            var signedAssemblyDirectory = Path.Combine(OutputPath.ItemSpec, "DaS.StrongNameSigner");
+            var copyLocalReferencesDirectory = Path.Combine(signedAssemblyDirectory, "copyLocalReferences");
+            var referencesDirectory = Path.Combine(signedAssemblyDirectory, "references");
+            CreateDirectoryIfNotExists(signedAssemblyDirectory);
+            CreateDirectoryIfNotExists(copyLocalReferencesDirectory);
+            CreateDirectoryIfNotExists(referencesDirectory);
+
             _publicKeyData = GetPublicKeyData();
             _probingPaths = References.Union(ReferenceCopyLocalPaths)
                 .Select(reference => Path.GetDirectoryName(reference.ItemSpec))
                 .ToImmutableList();
             _readerParameters = GetReaderParameters();
 
-            // Do the local paths first, to make sure we use the actual reference file.
-            SignedReferenceCopyLocalPaths = ReferenceCopyLocalPaths.Select(SignAssembly).ToArray();
-            SignedReferences = References.Select(SignAssembly).ToArray();
+            SignedReferenceCopyLocalPaths = ReferenceCopyLocalPaths
+                .Select(reference => SignAssembly(copyLocalReferencesDirectory, reference))
+                .ToArray();
+            SignedReferences = References
+                .Select(reference => SignAssembly(referencesDirectory, reference))
+                .ToArray();
         }
 
-        private ITaskItem SignAssembly(ITaskItem reference)
+        private void CreateDirectoryIfNotExists(string path)
+        {
+            if (!Directory.Exists(path))
+            {
+                Directory.CreateDirectory(path);
+            }
+        }
+
+        private ITaskItem SignAssembly(string outputDirectory, ITaskItem reference)
         {
             if (!IsValidDotNetReference(reference))
             {
                 return reference;
             }
             var assemblyInfo = GetAssemblyInfo(reference);
-            var hadToSign = assemblyInfo.TrySign(_signedAssemblyDirectory, _publicKeyData, out var signedTaskItem);
+            var hadToSign = assemblyInfo.TrySign(outputDirectory, _publicKeyData, out var signedTaskItem);
             if (hadToSign)
             {
                 // Files added to this list are added to the FileWrites msbuild property.

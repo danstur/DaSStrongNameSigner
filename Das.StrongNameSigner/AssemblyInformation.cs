@@ -43,6 +43,13 @@ namespace DaS.StrongNameSigner
             _readerParameters = readerParameters;
         }
 
+        /// <summary>
+        /// Returns true if a new file was generated, false if an existing one is returned.
+        /// </summary>
+        /// <param name="baseOutputDir"></param>
+        /// <param name="publicKeyData"></param>
+        /// <param name="signedTaskItem"></param>
+        /// <returns></returns>
         public bool TrySign(string baseOutputDir, PublicKeyData publicKeyData, out ITaskItem signedTaskItem)
         {
             if (IsSigned)
@@ -55,15 +62,18 @@ namespace DaS.StrongNameSigner
                 Mono.Cecil.AssemblyDefinition.ReadAssembly(InitialTaskItem.ItemSpec, _readerParameters))
             {
                 var outputFile = GetOutputFile(baseOutputDir);
-                File.Delete(outputFile);
-                var taskItem = new TaskItem(InitialTaskItem)
+                signedTaskItem = new TaskItem(InitialTaskItem)
                 {
                     ItemSpec = outputFile
                 };
+                if (File.Exists(outputFile))
+                {
+                    // If the file already exists, assume we already fixed it up correctly.
+                    return false;
+                }
                 SetPublicKeyTokenOnReferences(publicKeyData.PublicKeyToken);
                 FixInternalsVisibleTo(publicKeyData);
                 _assemblyDefinition.Write(outputFile, GetWriterParameters(publicKeyData.StrongNameKeyPair));
-                signedTaskItem = taskItem;
                 return true;
             }
         }
@@ -74,18 +84,23 @@ namespace DaS.StrongNameSigner
                 attr.AttributeType.FullName == typeof(InternalsVisibleToAttribute).FullName).ToList();
             foreach (var att in internalsVisibleToAttributes)
             {
-                if (att.ConstructorArguments.Count != 1)
-                {
-                    throw new InvalidOperationException("InternalsVisibleToAttribute does not have a single constructor argument.");
-                }
-                var assemblyNameArgument = att.ConstructorArguments.First();
-                var assemblyName = (string) assemblyNameArgument.Value;
-                if (!assemblyName.Contains("PublicKey"))
-                {
-                    assemblyName = $"{assemblyName},PublicKey={publicKeyData.PublicKeyTokenAsString}";
-                    att.ConstructorArguments.Clear();
-                    att.ConstructorArguments.Add(new CustomAttributeArgument(assemblyNameArgument.Type, assemblyName));
-                }
+                // TODO [DaS] Assume for now that InternalsVisibleToAttribute is only used
+                // for tests. The problem here is that we need a list of assembly name to public key token
+                // since unsigned assemblies generally don't add the public key token when 
+                // setting the InternalsVisibleToAttribute.
+                _assemblyDefinition.CustomAttributes.Remove(att);
+                //if (att.ConstructorArguments.Count != 1)
+                //{
+                //    throw new InvalidOperationException("InternalsVisibleToAttribute does not have a single constructor argument.");
+                //}
+                //var assemblyNameArgument = att.ConstructorArguments.First();
+                //var assemblyName = (string) assemblyNameArgument.Value;
+                //if (!assemblyName.Contains("PublicKey"))
+                //{
+                //    assemblyName = $"{assemblyName},PublicKey={publicKeyData.PublicKeyTokenAsString}";
+                //    att.ConstructorArguments.Clear();
+                //    att.ConstructorArguments.Add(new CustomAttributeArgument(assemblyNameArgument.Type, assemblyName));
+                //}
             }
         }
 
