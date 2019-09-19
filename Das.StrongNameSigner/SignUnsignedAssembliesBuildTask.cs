@@ -91,6 +91,10 @@ namespace DaS.StrongNameSigner
                 return reference;
             }
             var assemblyInfo = GetAssemblyInfo(reference);
+            if (assemblyInfo == null)
+            {
+                return reference;
+            }
             var hadToSign = assemblyInfo.TrySign(outputDirectory, _publicKeyData, out var signedTaskItem);
             if (hadToSign)
             {
@@ -125,9 +129,18 @@ namespace DaS.StrongNameSigner
         private AssemblyInformation GetAssemblyInfo(ITaskItem referenceItem)
         {
             var assemblyPath = referenceItem.ItemSpec;
-            using (var assemblyDefinition = AssemblyDefinition.ReadAssembly(assemblyPath, _readerParameters))
+            try
             {
-                return new AssemblyInformation(referenceItem, assemblyDefinition, _readerParameters);
+                using (var assemblyDefinition = AssemblyDefinition.ReadAssembly(assemblyPath, _readerParameters))
+                {
+                    return new AssemblyInformation(referenceItem, assemblyDefinition, _readerParameters);
+                }
+            }
+            catch (BadImageFormatException)
+            {
+                // Mono.Cecil could not read the given file, it's probably (hopefully) not 
+                // a .NET library.
+                return null;
             }
         }
 
