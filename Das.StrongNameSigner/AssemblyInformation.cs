@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -17,7 +18,7 @@ namespace DaS.StrongNameSigner
 
         private AssemblyDefinition _assemblyDefinition;
 
-        private readonly ReaderParameters _readerParameters;
+        private readonly DefaultAssemblyResolver _assemblyResolver;
 
         private string AssemblyFilePath => InitialTaskItem.ItemSpec;
 
@@ -32,13 +33,13 @@ namespace DaS.StrongNameSigner
             .AssemblyReferences
             .Where(ass => ass.PublicKeyToken.Length == 0);
 
-        public AssemblyInformation(ITaskItem initialTaskItem, AssemblyDefinition assemblyDefinition, ReaderParameters readerParameters)
+        public AssemblyInformation(ITaskItem initialTaskItem, AssemblyDefinition assemblyDefinition, DefaultAssemblyResolver assemblyResolver)
         {
             // The AssemblyDefinition is disposed and was initialized with deferred reading. 
             // We have to be careful what we do with it.
             InitialTaskItem = initialTaskItem;
             _assemblyDefinition = assemblyDefinition;
-            _readerParameters = readerParameters;
+            _assemblyResolver = assemblyResolver;
         }
 
         /// <summary>
@@ -57,7 +58,7 @@ namespace DaS.StrongNameSigner
             }
             // Replace the assemblydefinition with an open one for the duration of the write calls.
             using (_assemblyDefinition =
-                Mono.Cecil.AssemblyDefinition.ReadAssembly(InitialTaskItem.ItemSpec, _readerParameters))
+                Mono.Cecil.AssemblyDefinition.ReadAssembly(InitialTaskItem.ItemSpec, GetReaderParameters()))
             {
                 var outputFile = GetOutputFile(baseOutputDir);
                 signedTaskItem = new TaskItem(InitialTaskItem)
@@ -71,7 +72,14 @@ namespace DaS.StrongNameSigner
                 }
                 SetPublicKeyTokenOnReferences(publicKeyData.PublicKeyToken);
                 FixInternalsVisibleTo(publicKeyData);
-                _assemblyDefinition.Write(outputFile, GetWriterParameters(publicKeyData.StrongNameKeyPair));
+                try
+                {
+                    _assemblyDefinition.Write(outputFile, GetWriterParameters(publicKeyData.StrongNameKeyPair));
+                }
+                catch (Exception e)
+                {
+                    Debugger.Launch();
+                }
                 return true;
             }
         }
@@ -125,12 +133,26 @@ namespace DaS.StrongNameSigner
 
         private WriterParameters GetWriterParameters(StrongNameKeyPair strongNameKeyPair)
         {
-            var pdbPath = AssemblyFilePath.Substring(0, AssemblyFilePath.LastIndexOf('.')) + ".pdb";
             return new WriterParameters()
             {
                 StrongNameKeyPair = strongNameKeyPair,
-                WriteSymbols = File.Exists(pdbPath)
+                WriteSymbols = SymbolsExist()
             };
+        }
+
+        private ReaderParameters GetReaderParameters()
+        {
+            return new ReaderParameters()
+            {
+                AssemblyResolver = _assemblyResolver,
+                ReadSymbols = SymbolsExist()
+            };
+        }
+
+        private bool SymbolsExist()
+        {
+            var pdbPath = AssemblyFilePath.Substring(0, AssemblyFilePath.LastIndexOf('.')) + ".pdb";
+            return File.Exists(pdbPath);
         }
     }
 }

@@ -1,12 +1,12 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <UsingTask TaskName="DaS.StrongNameSigner.SignUnsignedAssembliesBuildTask" AssemblyFile="$(MSBuildThisFileDirectory)DaS.StrongNameSigner.dll" />
-
   <Target Name="StrongNameSignerTarget" AfterTargets="AfterResolveReferences">
-    <DaS.StrongNameSigner.SignUnsignedAssembliesBuildTask References="@(ReferencePath)" ReferenceCopyLocalPaths="@(ReferenceCopyLocalPaths)" OutputPath="$(IntermediateOutputPath)">
+    <DaS.StrongNameSigner.SignUnsignedAssembliesBuildTask References="@(ReferencePath)" 
+                                                          ReferenceCopyLocalPaths="@(ReferenceCopyLocalPaths)" 
+                                                          OutputPath="$(IntermediateOutputPath)">
       <Output TaskParameter="SignedReferences" ItemName="NewReferences" />
       <Output TaskParameter="SignedReferenceCopyLocalPaths" ItemName="NewCopyLocalFiles" />
-      <Output TaskParameter="TemporaryFilesToClean" ItemName="TemporaryFilesToClean" />
     </DaS.StrongNameSigner.SignUnsignedAssembliesBuildTask>
 
     <ItemGroup>
@@ -14,8 +14,13 @@
       <ReferencePath Include="@(NewReferences)" />
       <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)" />
       <ReferenceCopyLocalPaths Include="@(NewCopyLocalFiles)" />
-      <FileWrites Include="@(TemporaryFilesToClean)"/>
     </ItemGroup>
+  </Target>
+
+  <!--Instead of fiddling with the FileWrites property and its interesting 
+  interactions with iterative builds, simply delete the whole directory. -->
+  <Target Name="Das.StrongNameSigner.CleanCache" AfterTargets="AfterClean">
+    <RemoveDir Directories="$(IntermediateOutputPath)\DaS.StrongNameSigner" />
   </Target>
 
 </Project>

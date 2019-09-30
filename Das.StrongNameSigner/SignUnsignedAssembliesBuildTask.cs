@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.IO;
 using System.Linq;
@@ -26,14 +25,9 @@ namespace DaS.StrongNameSigner
         [Output]
         public ITaskItem[] SignedReferenceCopyLocalPaths { get; set; }
 
-        [Output]
-        public ITaskItem[] TemporaryFilesToClean { get; set; }
-
-        private readonly IList<ITaskItem> _temporaryFilesToClean = new List<ITaskItem>();
-
         private IImmutableList<string> _probingPaths;
 
-        private ReaderParameters _readerParameters;
+        private DefaultAssemblyResolver _assemblyResolver;
 
         private PublicKeyData _publicKeyData;
 
@@ -43,7 +37,6 @@ namespace DaS.StrongNameSigner
             {
                 Log.LogMessage(MessageImportance.Normal, "---- .NET Assembly Strong-Name Signer ----");
                 SignAllAssemblies();
-                TemporaryFilesToClean = _temporaryFilesToClean.ToArray();
                 return true;
             }
             catch (Exception e)
@@ -55,6 +48,7 @@ namespace DaS.StrongNameSigner
 
         private void SignAllAssemblies()
         {
+            // If this is renamed also fix the reference in the cleanup task in Das.StrongNameSigner.targets
             var signedAssemblyDirectory = Path.Combine(OutputPath.ItemSpec, "DaS.StrongNameSigner");
             var copyLocalReferencesDirectory = Path.Combine(signedAssemblyDirectory, "copyLocalReferences");
             var referencesDirectory = Path.Combine(signedAssemblyDirectory, "references");
@@ -66,7 +60,7 @@ namespace DaS.StrongNameSigner
             _probingPaths = References.Union(ReferenceCopyLocalPaths)
                 .Select(reference => Path.GetDirectoryName(reference.ItemSpec))
                 .ToImmutableList();
-            _readerParameters = GetReaderParameters();
+            _assemblyResolver = GetAssemblyResolver();
 
             SignedReferenceCopyLocalPaths = ReferenceCopyLocalPaths
                 .Select(reference => SignAssembly(copyLocalReferencesDirectory, reference))
@@ -74,6 +68,16 @@ namespace DaS.StrongNameSigner
             SignedReferences = References
                 .Select(reference => SignAssembly(referencesDirectory, reference))
                 .ToArray();
+        }
+
+        private DefaultAssemblyResolver GetAssemblyResolver()
+        {
+            var resolver = new DefaultAssemblyResolver();
+            foreach (var probingPath in _probingPaths)
+            {
+                resolver.AddSearchDirectory(probingPath);
+            }
+            return resolver;
         }
 
         private void CreateDirectoryIfNotExists(string path)
@@ -95,14 +99,7 @@ namespace DaS.StrongNameSigner
             {
                 return reference;
             }
-            var hadToSign = assemblyInfo.TrySign(outputDirectory, _publicKeyData, out var signedTaskItem);
-            if (hadToSign)
-            {
-                // Files added to this list are added to the FileWrites msbuild property.
-                // Everything included in this property is added to the FileListAbsolute.txt
-                // file which is used to decide what files to delete when MSBuild clean is called.
-                _temporaryFilesToClean.Add(signedTaskItem);
-            }
+            assemblyInfo.TrySign(outputDirectory, _publicKeyData, out var signedTaskItem);
             return signedTaskItem;
         }
 
@@ -110,7 +107,6 @@ namespace DaS.StrongNameSigner
         {
             // Ignore pdbs. Also if the file does not exist, it probably is part of the build
             // and being created at which point we are not responsible for signing it anyhow.
-            // TODO This could be problematic with native assemblies that are referenced. 
             var path = item.ItemSpec;
             var isAssembly = path.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) ||
                 path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase);
@@ -131,9 +127,12 @@ namespace DaS.StrongNameSigner
             var assemblyPath = referenceItem.ItemSpec;
             try
             {
-                using (var assemblyDefinition = AssemblyDefinition.ReadAssembly(assemblyPath, _readerParameters))
+                using (var assemblyDefinition = AssemblyDefinition.ReadAssembly(assemblyPath, new ReaderParameters()
                 {
-                    return new AssemblyInformation(referenceItem, assemblyDefinition, _readerParameters);
+                    AssemblyResolver = _assemblyResolver,
+                }))
+                {
+                    return new AssemblyInformation(referenceItem, assemblyDefinition, _assemblyResolver);
                 }
             }
             catch (BadImageFormatException)
@@ -142,19 +141,6 @@ namespace DaS.StrongNameSigner
                 // a .NET library.
                 return null;
             }
-        }
-
-        private ReaderParameters GetReaderParameters()
-        {
-            var resolver = new DefaultAssemblyResolver();
-            foreach (var probingPath in _probingPaths)
-            {
-                resolver.AddSearchDirectory(probingPath);
-            }
-            return new ReaderParameters()
-            {
-                AssemblyResolver = resolver
-            };
         }
     }
 }
